@@ -25,6 +25,7 @@ namespace { // Unnamed namespace (everything except main is in it).
 const char* k_windowTitle = "Distance Field Example";
 const int k_windowWidth = 1280;
 const int k_windowHeight = 720;
+const int k_distTexSize = 64;
 
 const float PI = static_cast<float>(M_PI);
 const float TwoPI = 2.f * PI;
@@ -36,24 +37,6 @@ enum class AppState
 {
     Idle,
     Rotating
-};
-
-// Emergency vector math!
-struct Vec3
-{
-    float x, y, z;
-    Vec3() = default;
-    Vec3(const float x_, const float y_, const float z_): x(x_), y(y_), z(z_) {}
-    Vec3 operator + (const Vec3& o) const { return Vec3(x + o.x, y + o.y, z + o.z); }
-    Vec3 operator - (const Vec3& o) const { return Vec3(x - o.x, y - o.y, z - o.z); }
-    Vec3 operator - () const { return Vec3(-x, -y, -z); }
-    Vec3 normalized() const {
-        const float length = std::sqrt(x*x + y*y + z*z);
-        return Vec3(x / length, y / length, z / length);
-    }
-    Vec3 cross(const Vec3& b) const {
-        return Vec3(y*b.z - z*b.y, z*b.x - x*b.z, x*b.y - y*b.x);
-    }
 };
 
 struct OrbitalCamera
@@ -69,8 +52,9 @@ GLuint distanceFieldShader;
 GLuint distanceFieldTex;
 GLuint fullVertexBuffer;
 GLint canvasSizeLoc;
-GLint rightLoc, forwardLoc, upLoc, posLoc;
+GLint originLoc;
 GLint distFieldSamLoc;
+GLint timeLoc;
 double mouseStartX, mouseStartY;
 OrbitalCamera orbiCam;
 AppState appState = AppState::Idle;
@@ -81,60 +65,24 @@ bool setup(GLFWwindow* window)
     glViewport(0, 0, fbWidth, fbHeight);
     std::cout << "Framebuffer size: " << fbWidth << "x" << fbHeight << std::endl;
 
-    orbiCam.radius = 1.5f;
-    orbiCam.phi = -2.8f;
-    orbiCam.theta = 1.39f;
+    orbiCam.radius = 4.f;
+    orbiCam.phi = PI/2.f - 0.2f;
+    orbiCam.theta = PI/2.f;
 
+    const std::vector<uint8_t> fragmentShaderBin = readFile("raymarch.fs");
+    const std::string fragmentShaderSource(fragmentShaderBin.begin(), fragmentShaderBin.end());
     distanceFieldShader = uploadShader(std::string() +
         "attribute vec4 posNDC;    \n"
         "void main() {             \n"
         "    gl_Position = posNDC; \n"
         "}",
-        std::string() +
-        "uniform sampler2D distFieldSam; \n"
-        "const float distFieldSize = 32.0;   \n"
-        "uniform vec2 canvasSize;  \n"
-        "uniform vec3 forward;     \n"
-        "uniform vec3 up;          \n"
-        "uniform vec3 right;       \n"
-        "uniform vec3 pos;         \n"
-        "float sampleDistanceField(vec3 position) { \n"
-        "   vec3 coords = clamp(position, 0.0, 1.0); \n"
-        "   vec2 unpacked; \n"
-        "   unpacked.y = coords.y; \n"
-        "   unpacked.x = (floor(coords.z*distFieldSize) + coords.x) / distFieldSize; \n"
-        "   float d1 = texture2D(distFieldSam, unpacked).r; \n"
-        "   unpacked.x = (floor(coords.z*distFieldSize) + 1.0 + coords.x) / distFieldSize; \n"
-        "   float d2 = texture2D(distFieldSam, unpacked).r; \n"
-        "   float a = fract(coords.z*distFieldSize); \n"
-        "   return sqrt(dot(position-coords, position-coords)) + mix(d1, d2, a); \n"
-        "}\n"
-        "float march(vec3 origin, vec3 dir) {                         \n"
-        "    float t = 0.0;                                           \n"
-        "    for (int i = 0; i < 10; i++) {                           \n"
-        "        float h = sampleDistanceField(origin + t*dir);       \n"
-        "        t += h;                                              \n"
-        "    }                                                        \n"
-        "    return t;                                                \n"
-        "}                                                            \n"
-        "void main() {             \n"
-        "    float ratio = canvasSize.y / canvasSize.x;               \n"
-        "    float halfWidth = canvasSize.x / 2.f;                    \n"
-        "    float halfHeight = canvasSize.y / 2.f;                   \n"
-        "    float x = (gl_FragCoord.x - halfWidth)  / canvasSize.x;  \n"
-        "    float y = ratio * (gl_FragCoord.y - halfHeight) / canvasSize.y; \n"
-        "    vec3 dir = normalize(forward + x*right + y*up);          \n"
-        "    float dist = march(pos, dir);                            \n"
-        "    gl_FragColor.g = 1.0-clamp(dist, 0.0, 1.0); \n"
-        "}");
-    canvasSizeLoc = glGetUniformLocation(distanceFieldShader, "canvasSize");
-    forwardLoc    = glGetUniformLocation(distanceFieldShader, "forward");
-    upLoc         = glGetUniformLocation(distanceFieldShader, "up");
-    rightLoc      = glGetUniformLocation(distanceFieldShader, "right");
-    posLoc        = glGetUniformLocation(distanceFieldShader, "pos");
-    distFieldSamLoc = glGetUniformLocation(distanceFieldShader, "distFieldSam");
+        fragmentShaderSource);
 
-    //ASSERT(canvasSizeLoc != -1 && forwardLoc != -1 && upLoc != -1 && rightLoc != -1 && posLoc != -1);
+    canvasSizeLoc   = glGetUniformLocation(distanceFieldShader, "canvasSize");
+    originLoc       = glGetUniformLocation(distanceFieldShader, "origin");
+    distFieldSamLoc = glGetUniformLocation(distanceFieldShader, "distFieldSam");
+    timeLoc         = glGetUniformLocation(distanceFieldShader, "time");
+    ASSERT(canvasSizeLoc != -1 && originLoc != -1 && distFieldSamLoc != -1 && timeLoc != -1);
 
     // Two triangles in normalized device coordinates, covering the entire framebuffer.
     float fullVertices[] = {
@@ -155,7 +103,7 @@ bool setup(GLFWwindow* window)
 
     glGenTextures(1, &distanceFieldTex);
     glBindTexture(GL_TEXTURE_2D, distanceFieldTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 32*32, 32, 0, GL_RED, GL_UNSIGNED_BYTE, distanceField.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, k_distTexSize*k_distTexSize, k_distTexSize, 0, GL_RED, GL_UNSIGNED_BYTE, distanceField.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -171,21 +119,14 @@ void drawFrame()
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(distanceFieldShader);
 
-    const Vec3 pos(orbiCam.radius * std::sin(orbiCam.theta) * std::cos(orbiCam.phi) + 0.5f,
-                   orbiCam.radius * std::sin(orbiCam.theta) * std::sin(orbiCam.phi) + 0.5f,
-                   orbiCam.radius * std::cos(orbiCam.theta)                         + 0.5f);
-    const Vec3 forward = (Vec3(0.5f, 0.5f, 0.5f)-pos).normalized();
-    const float halfPi = PI/2.f;
-    const Vec3 right   = Vec3(std::cos(orbiCam.phi - halfPi),
-                              std::sin(orbiCam.phi - halfPi),
-                              0.f);
-    const Vec3 up      = right.cross(forward);
+    const float origin[3] =
+        {orbiCam.radius * std::sin(orbiCam.theta) * std::cos(orbiCam.phi) + 0.5f,
+         orbiCam.radius * std::sin(orbiCam.theta) * std::sin(orbiCam.phi) + 0.5f,
+         orbiCam.radius * std::cos(orbiCam.theta)                         + 0.5f};
 
     glUniform2f(canvasSizeLoc, fbWidth, fbHeight);
-    glUniform3f(forwardLoc, forward.x, forward.y, forward.z);
-    glUniform3f(upLoc,      up.x,      up.y,      up.z);
-    glUniform3f(rightLoc,   right.x,   right.y,   right.z);
-    glUniform3f(posLoc,     pos.x,     pos.y,     pos.z);
+    glUniform3f(originLoc, origin[0], origin[1], origin[2]);
+    glUniform1f(timeLoc, static_cast<float>(glfwGetTime()));
 
     glActiveTexture(GL_TEXTURE0+0);
     glBindTexture(GL_TEXTURE_2D, distanceFieldTex);
@@ -214,7 +155,7 @@ void onCursorPos(GLFWwindow*, double x, double y)
         mouseStartX = x;
         mouseStartY = y;
         orbiCam.phi   -= (dx / fbWidth)  * TwoPI;
-        orbiCam.theta -= (dy / fbHeight) * PI;
+        orbiCam.theta += (dy / fbHeight) * PI;
         orbiCam.theta  = clamp(orbiCam.theta, 0.001f, PI-0.001f);
         return;
     }

@@ -39,6 +39,16 @@ struct AABB
 AABB computeAABB(const aiMesh* mesh);
 std::string getCmdOption(const std::vector<std::string>& args, const std::string& option);
 bool cmdOptionExists(const std::vector<std::string>& args, const std::string& option);
+float clamp(const float v, const float min, const float max);
+
+float clamp(const float v, const float min, const float max)
+{
+    if (v < min)
+        return min;
+    if (v > max)
+        return max;
+    return v;
+}
 
 AABB computeAABB(const aiMesh* mesh)
 {
@@ -123,7 +133,7 @@ int main(int argc, char** argv)
     if (args.size() == 1
         || cmdOptionExists(args, "-h")
         || cmdOptionExists(args, "--help")) {
-        std::cout << "Example usage: dfgen -i path/to/mesh.obj -o distfield.bin" << std::endl;
+        std::cout << "Example usage: dfgen -i path/to/mesh.obj -o distfield.bin --size 64 --signed --verbose" << std::endl;
         return EXIT_STATUS_INC;
     }
 
@@ -159,7 +169,11 @@ int main(int argc, char** argv)
                                                << k_distanceFieldSize << "x"
                                                << k_distanceFieldSize << std::endl;
 
-    if (cmdOptionExists(args, "--verbose")) {
+    const bool optionVerbose = cmdOptionExists(args, "--verbose");
+    const bool optionSigned = cmdOptionExists(args, "--signed");
+
+    std::cout << "Distace field will be " << (optionSigned ? "signed." : "unsigned.") << std::endl;
+    if (optionVerbose) {
         Assimp::DefaultLogger::create("", Assimp::Logger::VERBOSE, aiDefaultLogStream_STDOUT);
     }
 
@@ -191,7 +205,8 @@ int main(int argc, char** argv)
 
     // Compute the distance field on a 3D grid in the unit cube.
     // Can be stored in a e.g. 4096x64 2D texture (64x64 y slices side by side horizontally).
-    // Distance quantized to 256 values (0 means on/inside the mesh).
+    // Distance quantized to 256 values. Max distance is either 1 unit (if unsigned) or 0.5 (signed).
+    // If unsigned distance field is requested, values inside the mesh are set to 0.
     uint8_t* distanceField = new uint8_t[k_distanceFieldSize * k_distanceFieldSize * k_distanceFieldSize];
 
     std::cout << "In progress..." << std::endl;
@@ -205,10 +220,21 @@ int main(int argc, char** argv)
                             z*step + off);
         const int index = y*k_distanceFieldSize*k_distanceFieldSize + z*k_distanceFieldSize + x;
         const int domain = isInDomain(query).get_value_or(0);
-        if (domain == 1)
-            distanceField[index] = 0; // Inside or on boundary.
+        if (!optionSigned && domain == 1) {
+            // Inside or on boundary. We don't want signed distance, so we just set the field to 0.
+            // We don't need to actually issue a distance query in this special case.
+            distanceField[index] = 0;
+            continue;
+        }
+
+        const float dist = std::sqrt(static_cast<float>(tree.squared_distance(query)));
+        if (optionSigned) {
+            const float sign = (domain == 1) ? -1.f : 1.f; // Negative inside.
+            const float signedClampedDist = clamp(sign*dist + 0.5f, 0.f, 1.f); // 0.f to 1.f (from max negative distance -0.5 to max positive 0.5).
+            distanceField[index] = static_cast<uint8_t>(signedClampedDist*255.f);
+        }
         else
-            distanceField[index] = static_cast<uint8_t>(std::min(std::sqrt(static_cast<float>(tree.squared_distance(query))), 1.f) * 255.f);
+            distanceField[index] = static_cast<uint8_t>(std::min(dist, 1.f)*255.f);
     }
     }
     }
