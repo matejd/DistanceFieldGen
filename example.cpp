@@ -125,7 +125,7 @@ bool setup(GLFWwindow* window)
         "    float y = ratio * (gl_FragCoord.y - halfHeight) / canvasSize.y; \n"
         "    vec3 dir = normalize(forward + x*right + y*up);          \n"
         "    float dist = march(pos, dir);                            \n"
-        "    gl_FragColor.g = dist; \n"
+        "    gl_FragColor.g = 1.0-clamp(dist, 0.0, 1.0); \n"
         "}");
     canvasSizeLoc = glGetUniformLocation(distanceFieldShader, "canvasSize");
     forwardLoc    = glGetUniformLocation(distanceFieldShader, "forward");

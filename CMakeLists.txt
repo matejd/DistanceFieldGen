@@ -8,6 +8,6 @@ add_executable(DistanceFieldGen main.cpp)
 set_target_properties(DistanceFieldGen PROPERTIES OUTPUT_NAME dfgen)
 target_link_libraries(DistanceFieldGen m stdc++ assimp CGAL boost_thread boost_system gmp mpfr)
 
-add_executable(DistanceFieldExample example/main.cpp)
+add_executable(DistanceFieldExample example.cpp)
 set_target_properties(DistanceFieldExample PROPERTIES OUTPUT_NAME example)
 target_link_libraries(DistanceFieldExample m stdc++ GL GLEW glfw)

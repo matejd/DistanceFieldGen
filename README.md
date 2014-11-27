@@ -1,9 +1,10 @@
 Distance Fields
 ===============
 
-Distance fields seem to be in vogue this year. This tiny project features
-a distance field generator - it generates a 3D texture from input polygonal mesh.
-Uses Assimp and CGAL [1]. Also includes a GLFW example.
+Distance fields seem to be back in vogue. This tiny project features
+a distance field generator - it converts an input polygonal mesh into a 3D texture
+of closest distance values.
+Uses Assimp and CGAL [1]. Also includes a GLFW example (raymarching).
 
 
 Build

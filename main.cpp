@@ -36,6 +36,10 @@ struct AABB
     aiVector3D min, max;
 };
 
+AABB computeAABB(const aiMesh* mesh);
+std::string getCmdOption(const std::vector<std::string>& args, const std::string& option);
+bool cmdOptionExists(const std::vector<std::string>& args, const std::string& option);
+
 AABB computeAABB(const aiMesh* mesh)
 {
     const float Inf = std::numeric_limits<float>::infinity();
@@ -61,7 +65,7 @@ template <class HalfedgeDataStructure>
 class CGALBuilder : public CGAL::Modifier_base<HalfedgeDataStructure>
 {
 public:
-    CGALBuilder(const aiMesh* mesh): mesh(mesh) {}
+    CGALBuilder(const aiMesh* m): mesh(m) {}
 
     void operator()(HalfedgeDataStructure& hds)
     {
@@ -210,7 +214,7 @@ int main(int argc, char** argv)
     }
 
     outStream.write(reinterpret_cast<char*>(distanceField),
-                    k_distanceFieldSize * k_distanceFieldSize * k_distanceFieldSize * sizeof(uint8_t));
+                    k_distanceFieldSize * k_distanceFieldSize * k_distanceFieldSize * 1);
     outStream.close();
     delete [] distanceField;
     std::cout << "Computation complete." << std::endl;
