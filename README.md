@@ -6,6 +6,8 @@ a distance field generator - it converts an input polygonal mesh into a 3D textu
 of closest distance values.
 Uses Assimp and CGAL [1]. Also includes a GLFW example (raymarching).
 
+![Screenshot](http://matejd.github.io/DistanceFieldGen/distance-fields-armadillo-screenshot.png)
+
 
 Build
 -----
