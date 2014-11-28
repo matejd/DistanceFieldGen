@@ -4,7 +4,8 @@ Distance Fields
 Distance fields seem to be back in vogue. This tiny project features
 a distance field generator - it converts an input polygonal mesh into a 3D texture
 of closest distance values.
-Uses Assimp and CGAL [1]. Also includes a GLFW example (raymarching).
+Uses Assimp and CGAL [1]. Also includes a GLFW raymarching example
+(online [here](http://matejd.github.io/DistanceFieldGen/emscripten/release/DistFieldExample.html)).
 
 ![Screenshot](http://matejd.github.io/DistanceFieldGen/distance-fields-armadillo-screenshot.png)
 
