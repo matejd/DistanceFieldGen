@@ -45,8 +45,8 @@ float march(vec3 ro, vec3 rd, float randOff)
 void main()
 {
     float ratio = canvasSize.y / canvasSize.x;
-    float halfWidth = canvasSize.x / 2.f;
-    float halfHeight = canvasSize.y / 2.f;
+    float halfWidth = canvasSize.x / 2.0;
+    float halfHeight = canvasSize.y / 2.0;
     float x = (gl_FragCoord.x - halfWidth)  / canvasSize.x;
     float y = ratio * (gl_FragCoord.y - halfHeight) / canvasSize.y;
 

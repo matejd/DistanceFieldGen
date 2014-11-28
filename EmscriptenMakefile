@@ -1,0 +1,11 @@
+# TODO: cereal library needs cxxabi.h, which is included in emscripten, but not visible for some reason. As a temporary workaround I've added the full path to libcxxabi, which seems to work.
+EM_INCLUDE = -I/home/matej/Downloads/emsdk_portable/emscripten/master/system/lib/libcxxabi/include/
+EM_LIB = -lGL
+
+debug:
+	mkdir -p build/emscripten/debug/
+	em++ -o build/emscripten/debug/DistFieldExample.html -s SAFE_HEAP=1 -s USE_GLFW=3 -s ASSERTIONS=2 -s TOTAL_MEMORY=33554432 -g3 -std=c++11 -Weverything -Wno-c++98-compat -Wno-unused-function example.cpp $(EM_INCLUDE) $(EM_LIB) --preload-file armadillo_dist.bin --preload-file raymarch.fs
+
+release:
+	mkdir -p build/emscripten/release/
+	em++ -o build/emscripten/release/DistFieldExample.html -s USE_GLFW=3 -s TOTAL_MEMORY=33554432 -O3 -std=c++11 -Weverything -Wno-c++98-compat -Wno-unused-function example.cpp $(EM_INCLUDE) $(EM_LIB) --preload-file armadillo_dist.bin --preload-file raymarch.fs

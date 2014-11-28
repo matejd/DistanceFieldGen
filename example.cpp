@@ -6,19 +6,23 @@
 #include <cassert>
 #include <cmath>
 
-#ifdef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
+#define __EMSCRIPTEN__ 0
+#endif
+
+#if __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
-#include <GLFW/glfw3.h>
-#else
+#endif
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
+#if not(__EMSCRIPTEN__)
 #include <chrono>
 #include <thread>
 #endif
 
 #define ASSERT(expr) assert(expr)
-#define DEBUG
-#define NORETURN __attribute__((noreturn))
 
 namespace { // Unnamed namespace (everything except main is in it).
 
@@ -103,7 +107,11 @@ bool setup(GLFWwindow* window)
 
     glGenTextures(1, &distanceFieldTex);
     glBindTexture(GL_TEXTURE_2D, distanceFieldTex);
+#if __EMSCRIPTEN__
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, k_distTexSize*k_distTexSize, k_distTexSize, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, distanceField.data());
+#else
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, k_distTexSize*k_distTexSize, k_distTexSize, 0, GL_RED, GL_UNSIGNED_BYTE, distanceField.data());
+#endif
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -136,6 +144,8 @@ void drawFrame()
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4*sizeof(float), reinterpret_cast<GLvoid*>(0));
     glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 float clamp(const float v, const float min, const float max)
@@ -202,7 +212,7 @@ std::vector<uint8_t> readFile(const std::string& path)
     }
     contents.resize(static_cast<size_t>(numBytes)); // std::streamoff is signed!
     in.seekg(0, std::ios::beg);
-    in.read(reinterpret_cast<char*>(&contents[0]), numBytes);
+    in.read(reinterpret_cast<char*>(&contents[0]), static_cast<std::streamsize>(numBytes));
     in.close();
     return contents;
 }
@@ -285,53 +295,12 @@ void glfwErrorCallback(int /*error*/, const char* description)
     std::cout << "GLFW error: " << description << std::endl;
 }
 
-void NORETURN openglDebugCallback(GLenum source, GLenum type, GLuint /*id*/, GLenum severity,
-                                  GLsizei /*length*/, const GLchar* message, GLvoid* /*userParam*/)
-{
-    std::string sourceString;
-    std::string typeString;
-    std::string severityString;
-
-    switch (source) {
-        case GL_DEBUG_SOURCE_API:             sourceString = "API";             break;
-        case GL_DEBUG_SOURCE_APPLICATION:     sourceString = "Application";     break;
-        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:   sourceString = "Window System";   break;
-        case GL_DEBUG_SOURCE_SHADER_COMPILER: sourceString = "Shader Compiler"; break;
-        case GL_DEBUG_SOURCE_THIRD_PARTY:     sourceString = "Third Party";     break;
-        case GL_DEBUG_SOURCE_OTHER:           sourceString = "Other";           break;
-        default:                              sourceString = "Unknown";         break;
-    }
-
-    switch (type) {
-        case GL_DEBUG_TYPE_ERROR:               typeString = "Error";               break;
-        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: typeString = "Deprecated Behavior"; break;
-        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  typeString = "Undefined Behavior";  break;
-        case GL_DEBUG_TYPE_PORTABILITY_ARB:     typeString = "Portability";         break;
-        case GL_DEBUG_TYPE_PERFORMANCE:         typeString = "Performance";         break;
-        case GL_DEBUG_TYPE_OTHER:               typeString = "Other";               break;
-        default:                                typeString = "Unknown";             break;
-    }
- 
-    switch (severity) {
-        case GL_DEBUG_SEVERITY_HIGH:   severityString = "High";    break;
-        case GL_DEBUG_SEVERITY_MEDIUM: severityString = "Medium";  break;
-        case GL_DEBUG_SEVERITY_LOW:    severityString = "Low";     break;
-        default:                       severityString = "Unknown"; break;
-    }
-
-    std::cout << "OpenGL callback ["
-              << sourceString
-              << "][" << typeString
-              << "][" << severityString
-              << "]: " << message;
-    std::cout << std::endl;
-    ASSERT(false);
-}
-
 } // Unnamed namespace.
 
-#ifdef EMSCRIPTEN
-void emscriptenCallback()
+#if __EMSCRIPTEN__
+static GLFWwindow* g_window = nullptr;
+
+static void emscriptenCallback()
 {
     drawFrame();
     glfwSwapBuffers(g_window);
@@ -348,6 +317,7 @@ int main(int, char**)
     glfwSetMouseButtonCallback(window, onMouseButton);
     glfwSetScrollCallback(window,      onScroll);
 
+    g_window = window;
     setup(window);
     emscripten_set_main_loop(emscriptenCallback, 0, 1);
 
@@ -369,7 +339,7 @@ int main(int, char**)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#ifdef DEBUG
+#if 0
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif
 
@@ -390,13 +360,6 @@ int main(int, char**)
     ASSERT(glewError == GLEW_OK);
     glGetError();
     ASSERT(glGetError() == GL_NO_ERROR);
-
-#ifdef DEBUG
-    // Enable ARB_debug_output. Report events immediately (synchronous).
-    ASSERT(glDebugMessageCallback != nullptr);
-    glDebugMessageCallback(openglDebugCallback, nullptr);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-#endif
 
     // Core profile requires a VAO (http://github.prideout.net/modern-opengl-prezo/modern-opengl.pdf).
     // Creating one and only here.

@@ -20,9 +20,9 @@ cmake -G 'Unix Makefiles' ../../
 make
 ```
 
-To build with Emscripten
+To build the example with Emscripten (for the Web)
 ```
-make -f EmscriptenMakefile
+make release -f EmscriptenMakefile
 ```
 See the makefile for more details.
 
